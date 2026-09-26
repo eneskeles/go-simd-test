@@ -1,0 +1,6 @@
+# Written by cmd/zoom (timings.json) and cmd/race (the video).
+/out/
+
+# Test binaries and OS files
+*.test
+.DS_Store
