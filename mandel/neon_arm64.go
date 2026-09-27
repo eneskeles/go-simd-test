@@ -33,10 +33,10 @@ func rowPerturbNEON(out []int32, y int, p Params, o *Orbit) {
 // split across workers. Same requirements as PerturbScalar. The kernel
 // skips escapePerturb's end-of-orbit rebase (a pixel's orbit index never
 // exceeds its iteration number), so an orbit that escapes before
-// p.MaxIter falls back to ParallelPerturbSIMD.
+// p.MaxIter falls back to ParallelPerturbScalar.
 func ParallelPerturbNEON(out []int32, p Params, o *Orbit, workers int) {
 	if len(o.packed) <= p.MaxIter {
-		ParallelPerturbSIMD(out, p, o, workers)
+		ParallelPerturbScalar(out, p, o, workers)
 		return
 	}
 	parallelRows(p.H, workers, func(y int) {

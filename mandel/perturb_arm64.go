@@ -16,19 +16,18 @@ import "simd/archsimd"
 //
 // Each lane's orbit index is an ordinary int variable, so the loads index the
 // slice directly. Keeping the indices in an Int32x4 and extracting them with
-// GetElem for every load was 20% slower (see rowPerturbSIMDGeneral).
+// GetElem for every load was 20% slower.
 //
 // Rebasing is rare (about once per 200 iterations per pixel), so it is a
 // branch rather than a select: the CPU predicts "no rebase" and the next
 // gather and δ update need not wait for the test. Escaped lanes keep
 // iterating, masked out of the count. Like the NEON kernel, this version
 // never rebases at the end of the orbit and so needs an orbit longer than
-// MaxIter; for a shorter one it falls back to rowPerturbSIMDGeneral. The
-// arithmetic is identical, so the two give the same pixels.
+// MaxIter; for a shorter one it falls back to plain Go.
 func rowPerturbSIMD(out []int32, y int, p Params, o *Orbit) {
 	pk := o.packed
 	if len(pk) <= p.MaxIter {
-		rowPerturbSIMDGeneral(out, y, p, o)
+		rowPerturbScalar(out, y, p, o)
 		return
 	}
 	dci := archsimd.BroadcastFloat32x4(deltaC(y, p.H, p.Dy))
@@ -115,83 +114,6 @@ func rowPerturbSIMD(out []int32, y int, p Params, o *Orbit) {
 			m5++
 			m6++
 			m7++
-
-			trA, tiA := ZrA.Add(ZrA).Add(drA), ZiA.Add(ZiA).Add(diA)
-			trB, tiB := ZrB.Add(ZrB).Add(drB), ZiB.Add(ZiB).Add(diB)
-			drA, diA = trA.MulAdd(drA, dcrA).Sub(tiA.Mul(diA)), trA.MulAdd(diA, tiA.MulAdd(drA, dci))
-			drB, diB = trB.MulAdd(drB, dcrB).Sub(tiB.Mul(diB)), trB.MulAdd(diB, tiB.MulAdd(drB, dci))
-		}
-		cntA.Store(out[x:])
-		cntB.Store(out[x+4:])
-	}
-	dciS := deltaC(y, p.H, p.Dy)
-	for ; x < p.W; x++ {
-		out[x] = escapePerturb(deltaC(x, p.W, p.Dx), dciS, p.MaxIter, o)
-	}
-}
-
-// rowPerturbSIMDGeneral is the earlier form of rowPerturbSIMD, kept for
-// orbits that escape before MaxIter: the m == last rebase keeps every lane's
-// index inside the orbit. The indices live in an Int32x4 and are extracted
-// for every load, which costs about 20% against rowPerturbSIMD.
-func rowPerturbSIMDGeneral(out []int32, y int, p Params, o *Orbit) {
-	pk := o.packed
-	dci := archsimd.BroadcastFloat32x4(deltaC(y, p.H, p.Dy))
-	four := archsimd.BroadcastFloat32x4(4)
-	zero := archsimd.BroadcastFloat32x4(0)
-	one := archsimd.BroadcastInt32x4(1)
-	zeroI := archsimd.BroadcastInt32x4(0)
-	last := archsimd.BroadcastInt32x4(int32(len(pk) - 1))
-
-	var fa, fb [4]float32
-	x := 0
-	for ; x+8 <= p.W; x += 8 {
-		for i := range fa {
-			fa[i] = deltaC(x+i, p.W, p.Dx)
-			fb[i] = deltaC(x+4+i, p.W, p.Dx)
-		}
-		dcrA, dcrB := archsimd.LoadFloat32x4Array(&fa), archsimd.LoadFloat32x4Array(&fb)
-		var drA, diA, drB, diB archsimd.Float32x4
-		var mA, cntA, mB, cntB archsimd.Int32x4
-		activeA := zeroI.Equal(zeroI)
-		activeB := activeA
-
-		for i := 0; i < p.MaxIter; i++ {
-			var loA, hiA, loB, hiB archsimd.Uint64x2
-			loA = loA.SetElem(0, pk[mA.GetElem(0)]).SetElem(1, pk[mA.GetElem(1)])
-			hiA = hiA.SetElem(0, pk[mA.GetElem(2)]).SetElem(1, pk[mA.GetElem(3)])
-			loB = loB.SetElem(0, pk[mB.GetElem(0)]).SetElem(1, pk[mB.GetElem(1)])
-			hiB = hiB.SetElem(0, pk[mB.GetElem(2)]).SetElem(1, pk[mB.GetElem(3)])
-			a, b := loA.ReshapeToUint32s(), hiA.ReshapeToUint32s()
-			ZrA, ZiA := a.ConcatEven(b).BitsToFloat32(), a.ConcatOdd(b).BitsToFloat32()
-			a, b = loB.ReshapeToUint32s(), hiB.ReshapeToUint32s()
-			ZrB, ZiB := a.ConcatEven(b).BitsToFloat32(), a.ConcatOdd(b).BitsToFloat32()
-
-			zrA, ziA := ZrA.Add(drA), ZiA.Add(diA)
-			zrB, ziB := ZrB.Add(drB), ZiB.Add(diB)
-			magA := zrA.MulAdd(zrA, ziA.Mul(ziA))
-			magB := zrB.MulAdd(zrB, ziB.Mul(ziB))
-			activeA = activeA.And(magA.LessEqual(four))
-			activeB = activeB.And(magB.LessEqual(four))
-			cntA = cntA.Sub(activeA.ToInt32x4())
-			cntB = cntB.Sub(activeB.ToInt32x4())
-			if i&7 == 7 && activeA.ToInt32x4().Add(activeB.ToInt32x4()).ReduceSum() == 0 {
-				break
-			}
-
-			rebA := magA.Less(drA.MulAdd(drA, diA.Mul(diA))).And(activeA).Or(mA.Equal(last))
-			if rebA.ToInt32x4().ReduceSum() != 0 {
-				drA, diA = zrA.IfElse(rebA, drA), ziA.IfElse(rebA, diA)
-				ZrA, ZiA = zero.IfElse(rebA, ZrA), zero.IfElse(rebA, ZiA)
-				mA = zeroI.IfElse(rebA, mA)
-			}
-			rebB := magB.Less(drB.MulAdd(drB, diB.Mul(diB))).And(activeB).Or(mB.Equal(last))
-			if rebB.ToInt32x4().ReduceSum() != 0 {
-				drB, diB = zrB.IfElse(rebB, drB), ziB.IfElse(rebB, diB)
-				ZrB, ZiB = zero.IfElse(rebB, ZrB), zero.IfElse(rebB, ZiB)
-				mB = zeroI.IfElse(rebB, mB)
-			}
-			mA, mB = mA.Add(one), mB.Add(one)
 
 			trA, tiA := ZrA.Add(ZrA).Add(drA), ZiA.Add(ZiA).Add(diA)
 			trB, tiB := ZrB.Add(ZrB).Add(drB), ZiB.Add(ZiB).Add(diB)

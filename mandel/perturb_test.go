@@ -99,9 +99,9 @@ func TestPerturbNEONShortOrbit(t *testing.T) {
 		t.Fatalf("orbit of 0.3 should escape early, has %d steps", len(o.Re)-1)
 	}
 	want, got := make([]int32, p.W*p.H), make([]int32, p.W*p.H)
-	ParallelPerturbSIMD(want, p, o, 2)
+	PerturbScalar(want, p, o)
 	ParallelPerturbNEON(got, p, o, 2)
 	if pct := diffPct(got, want); pct != 0 {
-		t.Errorf("differs from ParallelPerturbSIMD on %.3f%% of pixels", pct)
+		t.Errorf("differs from PerturbScalar on %.3f%% of pixels", pct)
 	}
 }
