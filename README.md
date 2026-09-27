@@ -44,20 +44,20 @@ is idle first.
 ## Results
 
 Apple M4 MacBook Air, 600 frames at 480×270, median of 3 runs (every row
-within 3.3%), speedup over plain Go on 1 core:
+within 2.2%), speedup over plain Go on 1 core:
 
 | | 1 core | 4 cores | 8 cores |
 |---|---|---|---|
-| Plain Go | 102.5 s (1×) | 27.5 s (3.7×) | 18.2 s (5.6×) |
-| Go `simd` | 37.9 s (2.7×) | 11.6 s (8.8×) | 8.37 s (12.2×) |
-| NEON in C | 25.3 s (4.0×) | 7.19 s (14.3×) | 4.70 s (21.8×) |
-| GPU | | | 1.15 s (89×) |
+| Plain Go | 102.0 s (1×) | 27.3 s (3.7×) | 18.0 s (5.7×) |
+| Go `simd` | 31.5 s (3.2×) | 9.22 s (11.1×) | 6.48 s (15.7×) |
+| NEON in C | 25.2 s (4.0×) | 7.02 s (14.5×) | 4.61 s (22.1×) |
+| GPU | | | 1.16 s (88×) |
 
 8 cores are the 4 performance cores plus 4 efficiency cores.
 
 At thumbnail size the GPU's fixed cost per frame (about 0.2 ms) dominates
-and the CPU wins. The same zoom at 64×36: GPU 0.21 s, NEON ×8 0.11 s, Go
-`simd` ×8 0.18 s. At 128×72 the GPU is ahead again (0.25 s against NEON ×8
+and the CPU wins. The same zoom at 64×36: GPU 0.21 s, NEON ×8 0.12 s, Go
+`simd` ×8 0.15 s. At 128×72 the GPU is ahead again (0.24 s against NEON ×8
 at 0.35 s).
 
 ## Layout
