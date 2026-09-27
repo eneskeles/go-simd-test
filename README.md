@@ -1,6 +1,6 @@
 # go-simd-test
 
-Code for the post *Down the Seahorse Valley with Go SIMD*. It renders the
+Code for the post [*Down the Seahorse Valley with Go SIMD*.](https://eneskeles.substack.com/p/testing-go-simd-down-the-seahorse) It renders the
 same Mandelbrot deep zoom four ways and times each one on an Apple M4:
 
 - **Plain Go**, two pixels per loop
